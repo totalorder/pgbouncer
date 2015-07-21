@@ -334,6 +334,8 @@ struct PgSocket {
 	usec_t query_start;	/* query start moment */
 
 	uint8_t cancel_key[BACKENDKEY_LEN]; /* client: generated, server: remote */
+	char *shard_ident;
+
 	PgAddr remote_addr;	/* ip:port for remote endpoint */
 	PgAddr local_addr;	/* ip:port for local endpoint */
 

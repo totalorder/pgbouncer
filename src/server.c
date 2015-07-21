@@ -326,6 +326,13 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 				usec_t total;
 				total = get_cached_time() - client->query_start;
 				client->query_start = 0;
+
+				if (client->shard_ident != NULL) {
+					log_debug("end shard query: %s", client->shard_ident);
+					free(client->shard_ident);
+					client->shard_ident = NULL;
+				}
+
 				server->pool->stats.query_time += total;
 				slog_debug(client, "query time: %d us", (int)total);
 			} else if (ready) {

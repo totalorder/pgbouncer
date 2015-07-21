@@ -542,6 +542,10 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 		if (client->pool->db->admin)
 			return admin_handle_client(client, pkt);
 
+		if(process_shard_command(client, pkt)) {
+            return true;
+        };
+
 		/* acquire server */
 		if (!find_server(client))
 			return false;
