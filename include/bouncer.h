@@ -68,6 +68,11 @@ enum PauseMode {
 	P_SUSPEND = 2		/* wait for buffers to be empty */
 };
 
+enum TxState {
+    TX_NONE = 0,
+    TX_SHARD_INFO_SET = 1
+};
+
 #define is_server_socket(sk) ((sk)->state >= SV_FREE)
 
 
@@ -75,6 +80,7 @@ typedef struct PgSocket PgSocket;
 typedef struct PgUser PgUser;
 typedef struct PgDatabase PgDatabase;
 typedef struct PgPool PgPool;
+typedef struct PgCluster PgCluster;
 typedef struct PgStats PgStats;
 typedef union PgAddr PgAddr;
 typedef enum SocketState SocketState;
@@ -82,6 +88,7 @@ typedef struct PktHdr PktHdr;
 
 extern int cf_sbuf_len;
 
+#include <regex.h>
 #include "util.h"
 #include "iobuf.h"
 #include "sbuf.h"
@@ -99,9 +106,11 @@ extern int cf_sbuf_len;
 #include "stats.h"
 #include "takeover.h"
 #include "janitor.h"
+#include "sharding.h"
 
 /* to avoid allocations will use static buffers */
 #define MAX_DBNAME	64
+#define MAX_CLUSTERNAME	64
 #define MAX_USERNAME	64
 #define MAX_PASSWORD	64
 
@@ -258,11 +267,18 @@ struct PgUser {
 	int connection_count;	/* how much connections are used by user now */
 };
 
+struct PgCluster {
+    struct List head;
+    char name[MAX_CLUSTERNAME];
+    struct StatList databases;
+};
+
 /*
  * A database entry from config.
  */
 struct PgDatabase {
 	struct List head;
+	struct List cluster_head;
 	char name[MAX_DBNAME];	/* db name for clients */
 
 	bool db_paused;		/* PAUSE <db>; was issued */
@@ -304,6 +320,12 @@ struct PgDatabase {
  * ->state corresponds to various lists the struct can be at.
  */
 struct PgSocket {
+    enum TxState tx_state;
+
+    PgCluster *cluster;
+    char *sharding_key;
+    bool sharding_initialized;
+
 	struct List head;		/* list header */
 	PgSocket *link;		/* the dest of packets */
 	PgPool *pool;		/* parent pool, if NULL not yet assigned */
@@ -334,7 +356,6 @@ struct PgSocket {
 	usec_t query_start;	/* query start moment */
 
 	uint8_t cancel_key[BACKENDKEY_LEN]; /* client: generated, server: remote */
-	char *shard_ident;
 
 	PgAddr remote_addr;	/* ip:port for remote endpoint */
 	PgAddr local_addr;	/* ip:port for local endpoint */

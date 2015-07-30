@@ -135,6 +135,15 @@ static inline int _MUSTCHECK iobuf_send_pending(IOBuf *io, int fd)
 	len = io->parse_pos - io->done_pos;
 	Assert(len > 0);
 
+    // Log the contents of the data sent over the wire
+	putchar(*pos);
+	putchar(' ');
+	for (int i=5; i<len; i++) {
+		putchar((char)*(pos+i));
+	}
+	putchar('\n');
+	fflush(stdout);
+
 	res = safe_send(fd, pos, len, 0);
 	if (res > 0)
 		io->done_pos += res;

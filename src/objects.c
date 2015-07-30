@@ -25,6 +25,7 @@
 /* those items will be allocated as needed, never freed */
 STATLIST(user_list);
 STATLIST(database_list);
+STATLIST(cluster_list);
 STATLIST(pool_list);
 
 struct AATree user_tree;
@@ -40,6 +41,7 @@ struct Slab *server_cache;
 struct Slab *client_cache;
 struct Slab *db_cache;
 struct Slab *pool_cache;
+struct Slab *cluster_cache;
 struct Slab *user_cache;
 struct Slab *iobuf_cache;
 
@@ -74,6 +76,10 @@ static void construct_client(void *obj)
 	list_init(&client->head);
 	sbuf_init(&client->sbuf, client_proto);
 	client->state = CL_FREE;
+	client->tx_state = TX_NONE;
+    client->sharding_initialized = false;
+    client->sharding_key = NULL;
+    client->cluster = NULL;
 }
 
 static void construct_server(void *obj)
@@ -108,8 +114,13 @@ void init_objects(void)
 	user_cache = slab_create("user_cache", sizeof(PgUser), 0, NULL, USUAL_ALLOC);
 	db_cache = slab_create("db_cache", sizeof(PgDatabase), 0, NULL, USUAL_ALLOC);
 	pool_cache = slab_create("pool_cache", sizeof(PgPool), 0, NULL, USUAL_ALLOC);
+    cluster_cache = slab_create("cluster_cache", sizeof(PgCluster), 0, NULL, USUAL_ALLOC);
 
-	if (!user_cache || !db_cache || !pool_cache)
+    if (regcomp(&sharding_command_regex, "^([a-zA-Z]+)[ ]+'([^']+)';(.*)", REG_EXTENDED)) {
+        fatal("Could not compile regular expression.\n");
+    };
+
+	if (!user_cache || !db_cache || !pool_cache || !cluster_cache)
 		fatal("cannot create initial caches");
 }
 
@@ -285,6 +296,14 @@ static int cmp_database(struct List *i1, struct List *i2)
 	return strcmp(db1->name, db2->name);
 }
 
+/* compare cluster names, for use with put_in_order */
+static int cmp_cluster(struct List *i1, struct List *i2)
+{
+    PgCluster *cluster1 = container_of(i1, PgCluster, head);
+    PgCluster *cluster2 = container_of(i2, PgCluster, head);
+    return strcmp(cluster1->name, cluster2->name);
+}
+
 /* put elem into list in correct pos */
 static void put_in_order(struct List *newitem, struct StatList *list,
 			 int (*cmpfn)(struct List *, struct List *))
@@ -305,25 +324,24 @@ static void put_in_order(struct List *newitem, struct StatList *list,
 }
 
 /* create new object if new, then return it */
-PgDatabase *add_database(const char *name)
+PgDatabase *create_database(const char *name)
 {
-	PgDatabase *db = find_database(name);
+	PgDatabase *db;
 
 	/* create new object if needed */
-	if (db == NULL) {
-		db = slab_alloc(db_cache);
-		if (!db)
-			return NULL;
+    db = slab_alloc(db_cache);
+    if (!db)
+        return NULL;
 
-		list_init(&db->head);
-		if (strlcpy(db->name, name, sizeof(db->name)) >= sizeof(db->name)) {
-			log_warning("Too long db name: %s", name);
-			slab_free(db_cache, db);
-			return NULL;
-		}
-		aatree_init(&db->user_tree, user_node_cmp, user_node_release);
-		put_in_order(&db->head, &database_list, cmp_database);
-	}
+    list_init(&db->head);
+    list_init(&db->cluster_head);
+    if (strlcpy(db->name, name, sizeof(db->name)) >= sizeof(db->name)) {
+        log_warning("Too long db name: %s", name);
+        slab_free(db_cache, db);
+        return NULL;
+    }
+    aatree_init(&db->user_tree, user_node_cmp, user_node_release);
+    statlist_append(&database_list, &db->head);
 
 	return db;
 }
@@ -447,6 +465,19 @@ PgDatabase *find_database(const char *name)
 	return NULL;
 }
 
+PgCluster *find_cluster(const char *name)
+{
+    struct List *item;
+    PgCluster *cluster;
+    statlist_for_each(item, &cluster_list) {
+        cluster = container_of(item, PgCluster, head);
+        if (strcmp(cluster->name, name) == 0)
+            return cluster;
+    }
+
+    return NULL;
+}
+
 /* find existing user */
 PgUser *find_user(const char *name)
 {
@@ -506,6 +537,46 @@ PgPool *get_pool(PgDatabase *db, PgUser *user)
 	}
 
 	return new_pool(db, user);
+}
+
+static struct PgCluster *new_cluster(const char *name)
+{
+    struct PgCluster *cluster;
+
+    cluster = slab_alloc(cluster_cache);
+    if (!cluster)
+        return NULL;
+
+    list_init(&cluster->head);
+
+    if (strlcpy(cluster->name, name, sizeof(cluster->name)) >= sizeof(cluster->name)) {
+        log_warning("Too long cluster name: %s", name);
+        slab_free(cluster_cache, cluster);
+        return NULL;
+    }
+
+    statlist_init(&cluster->databases, "databases");
+
+    return cluster;
+}
+
+PgCluster *get_or_create_cluster(const char *name)
+{
+    struct List *item;
+    PgCluster *cluster;
+
+    if (!name)
+        return NULL;
+
+    statlist_for_each(item, &cluster_list) {
+        cluster = container_of(item, PgCluster, head);
+        if (strcmp(cluster->name, name) == 0)
+            return cluster;
+    }
+
+    cluster = new_cluster(name);
+    put_in_order(&cluster->head, &cluster_list, cmp_cluster);
+    return cluster;
 }
 
 /* deactivate socket and put into wait queue */

@@ -76,6 +76,7 @@ void sbuf_init(SBuf *sbuf, sbuf_cb_t proto_fn)
 {
 	memset(sbuf, 0, sizeof(SBuf));
 	sbuf->proto_cb = proto_fn;
+	sbuf->processed = false;
 }
 
 /* got new socket from accept() */
@@ -263,6 +264,7 @@ void sbuf_prepare_send(SBuf *sbuf, SBuf *dst, unsigned amount)
 	/* Assert(sbuf->pkt_action == ACT_UNSET || sbuf->pkt_action == ACT_SEND || iobuf_amount_pending(&sbuf->io)); */
 	Assert(amount > 0);
 
+	sbuf->processed = false;
 	sbuf->pkt_action = ACT_SEND;
 	sbuf->pkt_remain = amount;
 	sbuf->dst = dst;
@@ -276,6 +278,7 @@ void sbuf_prepare_skip(SBuf *sbuf, unsigned amount)
 	/* Assert(sbuf->pkt_action == ACT_UNSET || iobuf_send_pending_avail(&sbuf->io)); */
 	Assert(amount > 0);
 
+	sbuf->processed = false;
 	sbuf->pkt_action = ACT_SKIP;
 	sbuf->pkt_remain = amount;
 }

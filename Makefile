@@ -21,6 +21,7 @@ pgbouncer_SOURCES = \
 	src/takeover.c \
 	src/util.c \
 	src/varcache.c \
+	src/sharding.c \
 	include/admin.h \
 	include/bouncer.h \
 	include/client.h \
@@ -38,7 +39,8 @@ pgbouncer_SOURCES = \
 	include/system.h \
 	include/takeover.h \
 	include/util.h \
-	include/varcache.h
+	include/varcache.h \
+	include/sharding.h
 
 pgbouncer_CPPFLAGS = -Iinclude $(CARES_CFLAGS)
 

@@ -20,7 +20,8 @@ src/stats.c
 src/system.c
 src/takeover.c
 src/util.c
-src/varcache.c)
+src/varcache.c
+src/sharding.c)
 
 include_directories(
 include/

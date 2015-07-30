@@ -73,6 +73,8 @@ struct SBuf {
 	SBuf *dst;		/* target SBuf for current packet */
 
 	IOBuf *io;		/* data buffer, lazily allocated */
+
+	bool processed; /* already processed by process_shard_commands */
 };
 
 #define sbuf_socket(sbuf) ((sbuf)->sock)

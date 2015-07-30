@@ -136,7 +136,7 @@ int cf_log_connections;
 int cf_log_disconnections;
 int cf_log_pooler_errors;
 int cf_application_name_add_host;
-
+void log_config(void);
 /*
  * config file description
  */
@@ -302,6 +302,22 @@ static void set_dbs_dead(bool flag)
 	}
 }
 
+void log_config(void) {
+    PgCluster *cluster;
+    struct List *cluster_item;
+    statlist_for_each(cluster_item, &cluster_list) {
+        PgDatabase *db;
+        struct List *db_item;
+        cluster = container_of(cluster_item, PgCluster, head);
+        log_debug("[cluster] %s (%d)", cluster->name, statlist_count(&cluster->databases));
+
+        statlist_for_each(db_item, &cluster->databases) {
+            db = container_of(db_item, PgDatabase, cluster_head);
+            log_debug("%s:%d %s", db->host, db->port, db->dbname);
+        }
+    }
+}
+
 /* config loading, tries to be tolerant to errors */
 void load_config(void)
 {
@@ -331,6 +347,8 @@ void load_config(void)
 	/* reopen logfile */
 	if (main_config.loaded)
 		reset_logging();
+
+	log_config();
 }
 
 /*

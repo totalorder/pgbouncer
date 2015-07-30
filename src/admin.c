@@ -1321,51 +1321,6 @@ bool admin_handle_client(PgSocket *admin, PktHdr *pkt)
 	return false;
 }
 
-bool process_shard_command(PgSocket *client, PktHdr *pkt)
-{
-	const char *q;
-	/* don't tolerate partial packets */
-	if (incomplete_pkt(pkt)) {
-		disconnect_client(client, true, "incomplete pkt");
-		return false;
-	}
-
-	switch (pkt->type) {
-        char* shard_ident;
-
-		case 'Q':
-			if (!mbuf_get_string(&pkt->data, &q)) {
-				log_debug("got incomplete client query!");
-				return false;
-			}
-
-			log_debug("got client query: %s (shard: %s)", q, client->shard_ident);
-            if (strncasecmp(q, "shard ", 6) == 0 && (sscanf(q + 6, "%m[^;];", &shard_ident) == 1)) {
-                client->shard_ident = shard_ident;
-                log_debug("got shard ident: %s", shard_ident);
-
-                sbuf_prepare_skip(&client->sbuf, pkt->len);
-
-                char* ready_message_format = "Shard ident se to: %s";
-                char* ready_message = alloca(strlen(ready_message_format) + strlen(shard_ident));
-                sprintf(ready_message, ready_message_format, shard_ident);
-
-                admin_ready(client, ready_message);
-                return true;
-            }
-
-            break;
-		case 'X':
-			log_debug("got client close req!");
-			disconnect_client(client, false, "close req");
-			break;
-		default:
-			log_debug("unsupported client pkt type: %d", pkt_desc(pkt));
-			break;
-	}
-	return false;
-}
-
 /**
  * Client is unauthenticated, look if it wants to connect
  * to special "pgbouncer" user.
@@ -1436,7 +1391,7 @@ void admin_setup(void)
 	int res;
 
 	/* fake database */
-	db = add_database("pgbouncer");
+	db = create_database("pgbouncer");
 	if (!db)
 		fatal("no memory for admin database");
 

@@ -180,6 +180,7 @@ bool parse_database(void *base, const char *name, const char *connstr)
 	char *p, *key, *val;
 	PktBuf *msg;
 	PgDatabase *db;
+	PgCluster *cluster;
 	struct CfValue cv;
 	int pool_size = -1;
 	int res_pool_size = -1;
@@ -272,11 +273,19 @@ bool parse_database(void *base, const char *name, const char *connstr)
 		goto fail;
 	}
 
-	db = add_database(name);
+	db = create_database(name);
 	if (!db) {
 		log_error("cannot create database, no memory?");
 		goto fail;
 	}
+
+	cluster = get_or_create_cluster(name);
+    if (!cluster) {
+        log_error("cannot create cluster, no memory?");
+        goto fail;
+    }
+
+    statlist_append(&cluster->databases, &db->cluster_head);
 
 	/* host= */
 	if (host) {

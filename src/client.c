@@ -21,7 +21,6 @@
  */
 
 #include "bouncer.h"
-
 #include <usual/pgutil.h>
 
 static const char *hdr2hex(const struct MBuf *data, char *buf, unsigned buflen)
@@ -542,13 +541,15 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 		if (client->pool->db->admin)
 			return admin_handle_client(client, pkt);
 
-		if(process_shard_command(client, pkt)) {
+        if(handle_shard_commands(client, pkt)) {
             return true;
-        };
+        }
 
 		/* acquire server */
 		if (!find_server(client))
 			return false;
+
+        find_shard(client, pkt);
 
 		client->pool->stats.client_bytes += pkt->len;
 
